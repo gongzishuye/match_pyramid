@@ -24,9 +24,9 @@ class Model():
         self.dpool_index = tf.placeholder(tf.int32, name='dpool_index', \
             shape=(None, config['q_maxlen'], config['sq_maxlen'], 3))
 
-        self.batch_size = tf.shape(self.X1)[0]
+        batch_size = tf.shape(self.X1)[0]
         #self.embedding = tf.get_variable('embedding', initializer = config['embedding'], dtype=tf.float32, trainable=False)
-        self.embedding = tf.get_variable('embedding', shape=(100,100), dtype=tf.float32, trainable=False)
+        embedding = tf.get_variable('embedding', shape=(100,100), dtype=tf.float32, trainable=False)
 
         neg_size = config['neg_size']
         self.q_expand = tf.tile(self.q, [neg_size + 1, 1])
@@ -67,14 +67,18 @@ class Model():
                         [1, config['data1_maxlen'] / config['data1_psize'], config['data2_maxlen'] / config['data2_psize'], 1], "VALID")
 
         with tf.variable_scope('fc1'):
-            self.fc1 = tf.nn.relu(tf.contrib.layers.linear(tf.reshape(self.pool1, [self.batch_size, config['data1_psize'] * config['data2_psize'] * 8]), 20))
+            self.fc1 = tf.nn.relu(tf.contrib.layers.linear(tf.reshape(self.pool1, [batch_size, config['data1_psize'] * config['data2_psize'] * 8]), 20))
             self.pred = tf.contrib.layers.linear(self.fc1, 1)
+            self.pred = tf.transpose(tf.reshape(tf.transpose(self.pred), [negtive_size + 1, batch_size]))
 
-        self.cos_sim = tf.transpose(tf.reshape(tf.transpose(sim_raw), [negtive_size + 1, batch_size]))
+        with tf.name_scope('loss'):
+            # train Loss
+            self.prob = tf.nn.softmax(self.pred)
+            self.hit_prob = tf.slice(self.prob, [0, 0], [-1, 1])
+            self.loss = -tf.reduce_sum(tf.log(self.hit_prob)) / batch_size
 
         self.train_model = tf.train.AdamOptimizer().minimize(self.loss)
     
-        self.saver = tf.train.Saver(max_to_keep=20)
 
     def dynamic_pooling_index(self, len1, len2, max_len1, max_len2):
         def dpool_index_(batch_idx, len1_one, len2_one, max_len1, max_len2):
